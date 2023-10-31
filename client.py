@@ -3,7 +3,7 @@ import socket
 
 def get_guess():
     guess = input("Enter a letter: ")
-    return guess
+    return guess + '\n'
 
 
 def display_game_state(game_state):
