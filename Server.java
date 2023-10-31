@@ -1,9 +1,7 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
+package org.example;
+
+import java.io.*;
+import java.net.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -11,22 +9,9 @@ import java.util.Random;
 public class Server {
 
     private static String generateRandomWord() {
-        List<String> words = List.of("python", "hangman", "network", "programming");
-        Random random = new Random();
-        return words.get(random.nextInt(words.size()));
-    }
-
-    private static List<Object> initializeGame() {
-        String word = generateRandomWord();
-        List<Character> guessedLetters = new ArrayList<>();
-        int attempts = 6;
-
-        List<Object> gameData = new ArrayList<>();
-        gameData.add(word);
-        gameData.add(guessedLetters);
-        gameData.add(attempts);
-
-        return gameData;
+        String[] words = {"python", "hangman", "network", "programming"};
+        Random rand = new Random();
+        return words[rand.nextInt(words.length)];
     }
 
     private static String updateGameState(String word, List<Character> guessedLetters) {
@@ -41,76 +26,68 @@ public class Server {
         return displayWord.toString().trim();
     }
 
-    private static List<Object> handleGuess(char guess, String word, List<Character> guessedLetters, int attempts) {
+    private static String handleGuess(char guess, String word, List<Character> guessedLetters, int attempts) {
         if (guessedLetters.contains(guess)) {
-            return List.of("already_guessed", attempts);
-        } else if (word.contains(String.valueOf(guess))) {
+            return "already_guessed#" + attempts;
+        } else if (word.indexOf(guess) != -1) {
             guessedLetters.add(guess);
-            return List.of(updateGameState(word, guessedLetters), attempts);
+            return updateGameState(word, guessedLetters) + "#" + attempts;
         } else {
             attempts--;
-            guessedLetters.add(guess); // Add the guessed letter even for a wrong guess
-            return List.of("wrong_guess", attempts);
+            return "wrong_guess#" + attempts;
         }
     }
 
     public static void main(String[] args) throws IOException {
-        try (ServerSocket serverSocket = new ServerSocket(8888)) {
-            System.out.println("Server is running and waiting for players...");
+        ServerSocket serverSocket = new ServerSocket(8888);
+        System.out.println("Waiting for the first player to connect...");
+        Socket client1 = serverSocket.accept();
+        PrintWriter out1 = new PrintWriter(client1.getOutputStream(), true);
+        out1.println("Welcome! You are Player 1.");
+        System.out.println("Player 1 connected from: " + client1.getRemoteSocketAddress());
 
-            Socket player1 = serverSocket.accept();
-            BufferedReader reader1 = new BufferedReader(new InputStreamReader(player1.getInputStream()));
-            PrintWriter writer1 = new PrintWriter(player1.getOutputStream(), true);
+        System.out.println("Waiting for the second player to connect...");
+        Socket client2 = serverSocket.accept();
+        PrintWriter out2 = new PrintWriter(client2.getOutputStream(), true);
+        out2.println("Welcome! You are Player 2.");
+        System.out.println("Player 2 connected from: " + client2.getRemoteSocketAddress());
 
-            writer1.println("Welcome! You are Player 1.");
+        String word = generateRandomWord();
+        List<Character> guessedLetters = new ArrayList<>();
+        int attempts = 6;
 
-            Socket player2 = serverSocket.accept();
-            BufferedReader reader2 = new BufferedReader(new InputStreamReader(player2.getInputStream()));
-            PrintWriter writer2 = new PrintWriter(player2.getOutputStream(), true);
+        while (attempts > 0) {
+            for (Socket client : new Socket[]{client1, client2}) {
+                PrintWriter out = new PrintWriter(client.getOutputStream(), true);
 
-            writer2.println("Welcome! You are Player 2.");
+                String gameStatus = updateGameState(word, guessedLetters);
+                out.println(gameStatus);
+                out.println("Lives remaining: " + attempts);
 
-            System.out.println("Players connected!");
-
-            List<Object> gameData = initializeGame();
-            String word = (String) gameData.get(0);
-            List<Character> guessedLetters = (List<Character>) gameData.get(1);
-            int attempts = (int) gameData.get(2);
-
-            while (attempts > 0) {
-                // Player 1's turn
-                writer1.println(updateGameState(word, guessedLetters));
-                writer1.println("Lives remaining: " + attempts);
-                char guess1 = reader1.readLine().charAt(0);
-                List<Object> response1 = handleGuess(guess1, word, guessedLetters, attempts);
-                attempts = (int) response1.get(1);
-                writer1.println(response1.get(0));
-
-                if (!response1.get(0).toString().contains("_")) {
-                    writer2.println("You have guessed the word!");
+                if (!gameStatus.contains("_")) {
+                    out.println("You win!");
                     break;
                 }
 
-                // Player 2's turn
-                writer2.println(updateGameState(word, guessedLetters));
-                writer2.println("Lives remaining: " + attempts);
-                char guess2 = reader2.readLine().charAt(0);
-                List<Object> response2 = handleGuess(guess2, word, guessedLetters, attempts);
-                attempts = (int) response2.get(1);
-                writer2.println(response2.get(0));
+                BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+                char guess = in.readLine().charAt(0);
+                String response = handleGuess(guess, word, guessedLetters, attempts);
 
-                if (!response2.get(0).toString().contains("_")) {
-                    writer1.println("You have guessed the word!");
-                    break;
-                }
+                String[] parts = response.split("#");
+                String result = parts[0];
+                attempts = Integer.parseInt(parts[1]);
 
-                if (attempts == 0) {
-                    writer1.println("You lose! The word was " + word);
-                    writer2.println("You lose! The word was " + word);
-                    break;
-                }
+                out.println(result);
             }
 
+            if (attempts == 0) {
+                out1.println("You lose! The word was " + word);
+                out2.println("You lose! The word was " + word);
+                break;
+            }
         }
+
+        client1.close();
+        client2.close();
     }
 }
